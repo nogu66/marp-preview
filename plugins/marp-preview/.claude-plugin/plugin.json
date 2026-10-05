@@ -1,6 +1,6 @@
 {
   "name": "marp-preview",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A live Marp deck preview in a Claude Code pane: every slide rendered in one scrolling column, re-rendered on save and scrolled to the slide Claude or your editor just changed.",
   "author": {
     "name": "nogu66"
