@@ -7,6 +7,13 @@ import { basename, changedSlide, dirname, frontmatter, parse } from './lib/deck'
 const PANE = 'marp-preview'
 const TITLE = 'Marp Preview'
 const POLL_MS = 1000
+/** marp logs a conversion's slides in one burst: this long without a line and it is over. */
+const QUIET_MS = 100
+/** Polls a saved deck may go unrendered before the watcher counts as stuck: once it has rendered, and before. */
+const STUCK_POLLS = 8
+const FIRST_RENDER_POLLS = 90
+/** Watchers in a row that ended having rendered nothing, after which the pane waits for the deck to change. */
+const RESTART_MAX = 3
 /** How many folders above the deck are searched for marp and for themes. */
 const UP_MAX = 6
 /** A terminal cell is about 2.1 times as tall as it is wide. */
@@ -16,9 +23,26 @@ const deckAtom = atom({ plugin: 'marp-preview', key: 'deck' } as const, null)
 
 type Dollar = EngineInterface
 
-// Module variables hold only what a reload may lose
-let isRendering = false
-let isStale = false
+type Timer = ReturnType<Dollar['clock']['after']>
+
+/** marp in watch mode: one process, and one browser, for as long as the pane shows the deck. */
+type Watcher = {
+  path: string
+  stream: ReturnType<Dollar['process']['spawn']>
+  /** Stopped on purpose (the pane closed, another deck opened): not to be started again. */
+  isStopped: boolean
+  hasRendered: boolean
+  /** The conversion marp is logging now: whether it wrote slides, and the error it reported. */
+  hasSlides: boolean
+  error: string
+  quiet?: Timer
+}
+
+// Module variables hold only what a reload may lose. A reload also ends the watcher:
+// the engine kills a spawned child when its module unloads
+let watcher: Watcher | undefined
+let failures = 0
+let stalePolls = 0
 let isOpen = false
 let isPolling = false
 let seenMtime: number | undefined
@@ -112,77 +136,141 @@ async function findDeck($: Dollar, cwd: string): Promise<string | undefined> {
   return (await newestDeck($, cwd)) ?? (root === cwd ? undefined : await newestDeck($, root))
 }
 
-function runMarp($: Dollar, deck: Deck, output: string[]): Promise<{ exitCode: number; stderr: string }> {
-  return $.process
-    .run(
-      [
-        ...deck.bin,
-        deck.path,
-        '--no-stdin',
-        '--allow-local-files',
-        ...deck.themeSets.flatMap(dir => ['--theme-set', dir]),
-        ...output,
-      ],
-      { cwd: dirname(deck.path), timeoutMs: 180_000 },
-    )
-    .catch((error: unknown) => ({ exitCode: 1, stderr: String(error) }))
+function stopWatcher(): void {
+  const mine = watcher
+  watcher = undefined
+  if (!mine) return
+  mine.isStopped = true
+  mine.quiet?.cancel()
+  // Ending the stream is what ends marp, and its browser with it
+  void mine.stream.return({ code: null, signal: null }).catch(() => undefined)
 }
 
-async function render($: Dollar): Promise<void> {
+/** A conversion is over: show its slides, or say why there are none. */
+async function finish($: Dollar, mine: Watcher): Promise<void> {
+  const { hasSlides, error } = mine
+  mine.hasSlides = false
+  mine.error = ''
   const deck = await read($, deckAtom)
-  if (!deck) return
-  if (isRendering) {
-    isStale = true
+  if (watcher !== mine || !deck || deck.path !== mine.path) return
+  const stat = await $.fs.stat(deck.path).catch(() => undefined)
+  seenMtime = stat?.mtimeMs
+  stalePolls = 0
+  if (!hasSlides) {
+    await update($, deckAtom, (now): Deck | null =>
+      now ? { ...now, status: 'error', message: error.slice(0, 200) } : now,
+    )
 
     return
   }
-  isRendering = true
-  try {
-    const stat = await $.fs.stat(deck.path).catch(() => undefined)
-    seenMtime = stat?.mtimeMs
-    await update($, deckAtom, (now): Deck | null => (now ? { ...now, status: 'rendering', message: '' } : now))
-    await $.process.run(['mkdir', '-p', deck.outDir])
-    const ran = await runMarp($, deck, ['--images', 'png', '-o', `${deck.outDir}/s.png`])
-    const isDone = ran.exitCode === 0
-    const reason = ran.stderr.trim().split('\n').at(-1) ?? 'marp failed'
-    await update($, deckAtom, (now): Deck | null =>
-      now && now.path === deck.path
-        ? {
-            ...now,
-            status: isDone ? 'idle' : 'error',
-            message: isDone ? '' : reason.slice(0, 200),
-            generation: isDone ? now.generation + 1 : now.generation,
-          }
-        : now,
-    )
-  } finally {
-    isRendering = false
-    if (isStale) {
-      isStale = false
-      void render($)
-    }
-  }
+  mine.hasRendered = true
+  failures = 0
+  // Claude or an editor changed the deck: find the slide, to mark it and scroll to it
+  const text = await $.fs.read(deck.path).catch(() => undefined)
+  const changed = seenText === undefined || text === undefined ? undefined : changedSlide(seenText, text)
+  seenText = text ?? seenText
+  await update($, deckAtom, (now): Deck | null =>
+    now
+      ? { ...now, status: 'idle', message: '', generation: now.generation + 1, index: changed ?? now.index }
+      : now,
+  )
+  if (changed !== undefined) await scrollTo($, { key: `slide-${changed + 1}` })
 }
 
+/** One line of marp's log: a slide written, an error, or the start of a conversion. */
+async function hear($: Dollar, mine: Watcher, line: string): Promise<void> {
+  const isSlide = line.includes(' => ')
+  const isError = /\[\s*ERROR\s*\]/.test(line)
+  if (isSlide) mine.hasSlides = true
+  if (isError) mine.error = line.replace(/^.*?\]\s*/, '')
+  if (isSlide || isError) {
+    mine.quiet?.cancel()
+    mine.quiet = $.clock.after(QUIET_MS, () => void finish($, mine))
+
+    return
+  }
+  if (!/Converting|Insecure local file/.test(line)) return
+  await update($, deckAtom, (now): Deck | null =>
+    now && now.status !== 'rendering' ? { ...now, status: 'rendering', message: '' } : now,
+  )
+}
+
+/** Starts marp watching the deck: it renders once now, and again each time the deck is saved. */
+function startWatcher($: Dollar, deck: Deck): void {
+  stopWatcher()
+  const stream = $.process.spawn({
+    argv: [
+      ...deck.bin,
+      deck.path,
+      '--no-stdin',
+      '--allow-local-files',
+      ...deck.themeSets.flatMap(dir => ['--theme-set', dir]),
+      '--watch',
+      '--images',
+      'png',
+      '-o',
+      `${deck.outDir}/s.png`,
+    ],
+    cwd: dirname(deck.path),
+  })
+  const mine: Watcher = { path: deck.path, stream, isStopped: false, hasRendered: false, hasSlides: false, error: '' }
+  watcher = mine
+  stalePolls = 0
+  void (async () => {
+    let rest = ''
+    let reason = ''
+    try {
+      for await (const chunk of stream) {
+        const lines = (rest + chunk.text).split('\n')
+        rest = lines.pop() ?? ''
+        for (const line of lines) await hear($, mine, line)
+      }
+    } catch (error) {
+      reason = String(error)
+    }
+    mine.quiet?.cancel()
+    if (watcher === mine) watcher = undefined
+    if (mine.isStopped) return
+    // marp ended on its own: the next poll starts another, unless it keeps ending with nothing to show
+    failures = mine.hasRendered ? 0 : failures + 1
+    if (failures < RESTART_MAX) return
+    const stat = await $.fs.stat(deck.path).catch(() => undefined)
+    seenMtime = stat?.mtimeMs
+    await update($, deckAtom, (now): Deck | null =>
+      now ? { ...now, status: 'error', message: (mine.error || reason || 'marp stopped').slice(0, 200) } : now,
+    )
+  })()
+}
+
+/** Keeps a watcher alive while the pane is open: starts one when none runs, replaces one that is stuck. */
 function startPolling($: Dollar): void {
   if (isPolling) return
   isPolling = true
   $.clock.every(POLL_MS, () => {
     void (async () => {
-      if (!isOpen || isRendering) return
+      if (!isOpen) return
+      // The pane's close is heard at `ui.close`; this catches one that was not, within a poll
+      const panes = await $.ui.panes().catch(() => undefined)
+      if (panes && !panes.some(pane => pane.id === PANE)) {
+        isOpen = false
+        stopWatcher()
+
+        return
+      }
       const deck = await read($, deckAtom)
       if (!deck) return
       const stat = await $.fs.stat(deck.path).catch(() => undefined)
-      if (!stat || stat.mtimeMs === seenMtime) return
-      // Claude or an editor changed the deck: note which slide, then render again
-      const text = await $.fs.read(deck.path).catch(() => undefined)
-      const changed = seenText === undefined || text === undefined ? undefined : changedSlide(seenText, text)
-      seenText = text ?? seenText
-      if (changed !== undefined) {
-        await update($, deckAtom, now => (now ? { ...now, index: changed } : now))
+      const isUnrendered = stat !== undefined && stat.mtimeMs !== seenMtime
+      if (!watcher) {
+        // After giving up, a change to the deck is the cue to try again
+        if (failures >= RESTART_MAX && !isUnrendered) return
+        if (failures >= RESTART_MAX) failures = 0
+        startWatcher($, deck)
+
+        return
       }
-      await render($)
-      if (changed !== undefined) await scrollTo($, { key: `slide-${changed + 1}` })
+      stalePolls = isUnrendered ? stalePolls + 1 : 0
+      if (stalePolls >= (watcher.hasRendered ? STUCK_POLLS : FIRST_RENDER_POLLS)) startWatcher($, deck)
     })()
   })
 }
@@ -221,9 +309,11 @@ async function openDeck($: Dollar, given: string): Promise<string> {
     await update($, deckAtom, () => deck)
   }
   isOpen = true
+  failures = 0
   startPolling($)
   await $.ui.open({ id: PANE, title: TITLE, columns: 88, rows: 44 })
-  void render($)
+  const deck = await read($, deckAtom)
+  if (deck && watcher?.path !== deck.path) startWatcher($, deck)
 
   return `Opened ${basename(path)} in Marp Preview.`
 }
@@ -242,7 +332,7 @@ export const register: Register = on => {
       description: 'Open a live preview of a Marp deck in a pane',
       argumentHint: '[deck.md or folder]',
     })
-    // The pane stays open across a reload: keep following the deck
+    // The pane stays open across a reload, the watcher does not: the poll starts another
     const panes = await $.ui.panes()
     if (panes.some(pane => pane.id === PANE)) {
       isOpen = true
@@ -255,7 +345,20 @@ export const register: Register = on => {
   on('command.run', { command: 'marp' }, async ($, e) => ({ text: await openDeck($, e.args) }))
 
   on('ui.close', ($, e, next) => {
-    if (e.id === PANE) isOpen = false
+    if (e.id === PANE) {
+      isOpen = false
+      stopWatcher()
+    }
+
+    return next(e)
+  })
+
+  // A /clear keeps the process and the pane, so the watcher stays; any other end stops it
+  on('session.end', ($, e, next) => {
+    if (e.reason !== 'clear') {
+      isOpen = false
+      stopWatcher()
+    }
 
     return next(e)
   })
