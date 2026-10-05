@@ -1,0 +1,12 @@
+{
+  "name": "marp-preview-repo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "claude --plugin-dir plugins/marp-preview",
+    "test": "bun test tests",
+    "test:hooks": "claude plugin test plugins/marp-preview",
+    "typecheck": "claude -p \"/cost\" --plugin-dir plugins/marp-preview > /dev/null && tsc -p plugins/marp-preview",
+    "validate": "claude plugin validate . && claude plugin validate plugins/marp-preview"
+  }
+}

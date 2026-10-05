@@ -1,0 +1,6 @@
+{
+  "description": "marp-preview: /marp opens a pane with every slide rendered in one scrolling column, and follows the deck as it changes. Hooks session.start, command.run, ui.render and ui.close; reads the deck you open, writes no project file, and runs marp-cli to render PNGs under /tmp/marp-preview. Needs function hooks; builds without them ignore the modules key.",
+  "modules": [
+    "./register.tsx"
+  ]
+}
