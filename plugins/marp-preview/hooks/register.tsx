@@ -7,6 +7,8 @@ import { basename, changedSlide, dirname, frontmatter, parse } from './lib/deck'
 const PANE = 'marp-preview'
 const TITLE = 'Marp Preview'
 const POLL_MS = 1000
+/** How many folders above the deck are searched for marp and for themes. */
+const UP_MAX = 6
 /** A terminal cell is about 2.1 times as tall as it is wide. */
 const CELL_RATIO = 2.1
 
@@ -53,12 +55,13 @@ async function isDir($: Dollar, path: string): Promise<boolean> {
 
 /** Finds marp itself and the theme folders in the folders above the deck. */
 async function locate($: Dollar, path: string): Promise<Pick<Deck, 'bin' | 'themeSets'>> {
-  const root = await $.session.root()
+  // Past the session's root too: Claude Code may be started in the deck's own folder,
+  // with marp installed and the themes kept a level or two above it
   const dirs: string[] = []
   let dir = dirname(path)
-  for (let depth = 0; depth < 6; depth++) {
+  for (let depth = 0; depth < UP_MAX; depth++) {
     dirs.push(dir)
-    if (dir === root || dir === '/') break
+    if (dir === '/') break
     dir = dirname(dir)
   }
   let bin = ['npx', '--yes', '@marp-team/marp-cli']
@@ -78,8 +81,8 @@ async function locate($: Dollar, path: string): Promise<Pick<Deck, 'bin' | 'them
   return { bin, themeSets }
 }
 
-async function findDeck($: Dollar): Promise<string | undefined> {
-  const root = await $.session.root()
+/** The most recently changed deck (a .md with `marp: true`) under `dir`. */
+async function newestDeck($: Dollar, dir: string): Promise<string | undefined> {
   const found = await $.process
     .run([
       'grep',
@@ -89,7 +92,7 @@ async function findDeck($: Dollar): Promise<string | undefined> {
       '--exclude-dir=.git',
       '--exclude-dir=dist',
       '^marp: *true',
-      root,
+      dir,
     ])
     .catch(() => undefined)
   const paths = (found?.stdout ?? '').split('\n').filter(Boolean).slice(0, 40)
@@ -100,6 +103,13 @@ async function findDeck($: Dollar): Promise<string | undefined> {
   }
 
   return newest?.path
+}
+
+/** With no deck named: one under the folder the session is in, else anywhere in the project. */
+async function findDeck($: Dollar, cwd: string): Promise<string | undefined> {
+  const root = await $.session.root()
+
+  return (await newestDeck($, cwd)) ?? (root === cwd ? undefined : await newestDeck($, root))
 }
 
 function runMarp($: Dollar, deck: Deck, output: string[]): Promise<{ exitCode: number; stderr: string }> {
@@ -181,8 +191,17 @@ async function openDeck($: Dollar, given: string): Promise<string> {
   const cwd = await $.session.cwd()
   const current = await read($, deckAtom)
   const asked = given.trim().replace(/^["']|["']$/g, '')
-  const path = asked === '' ? (current?.path ?? (await findDeck($))) : asked.startsWith('/') ? asked : `${cwd}/${asked}`
-  if (path === undefined) return 'No Marp deck (a .md with `marp: true`) found. Name one: /marp <path>'
+  const named = asked === '' ? undefined : (asked.startsWith('/') ? asked : `${cwd}/${asked}`).replace(/\/+$/, '')
+  // A folder stands for the newest deck in it
+  const path =
+    named === undefined
+      ? (current?.path ?? (await findDeck($, cwd)))
+      : (await isDir($, named))
+        ? await newestDeck($, named)
+        : named
+  if (path === undefined) {
+    return `No Marp deck (a .md with \`marp: true\`) found${named === undefined ? '' : ` in ${named}`}. Name one: /marp <path>`
+  }
   const text = await $.fs.read(path).catch(() => undefined)
   if (typeof text !== 'string') return `Could not read ${path}`
   seenText = text
@@ -221,7 +240,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'marp',
       description: 'Open a live preview of a Marp deck in a pane',
-      argumentHint: '[deck.md]',
+      argumentHint: '[deck.md or folder]',
     })
     // The pane stays open across a reload: keep following the deck
     const panes = await $.ui.panes()
@@ -250,7 +269,7 @@ export const register: Register = on => {
     if (!deck) {
       return (
         <Box flexDirection="column">
-          <Text dimColor>Open a deck with /marp [deck.md].</Text>
+          <Text dimColor>Open a deck with /marp [deck.md or folder].</Text>
         </Box>
       )
     }

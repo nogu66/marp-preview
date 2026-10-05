@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-const PATH = '/work/deck.md'
+const PATH = '/work/talks/deck.md'
 const DECK = ['---', 'marp: true', 'theme: brand', '---', '', '# One', '', '---', '', '# Two', '', '---', '', '# Three', ''].join('\n')
 
 const PANE = {
@@ -31,24 +31,27 @@ test('/marp renders every slide in one scrolling column, and an outside edit scr
   })
   on('fs.exists', (_, e) => ({ value: files.has(e.path) }))
   on('fs.stat', (_, e) => {
-    if (e.path === '/work/themes') return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
+    if (e.path === '/work/themes' || e.path === '/work/talks') return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
     if (!files.has(e.path)) throw new Error('ENOENT')
 
     return { value: { kind: 'file' as const, size: 1, mtimeMs, isLink: false } }
   })
   on('process.run', (_, e) => {
     runs.push([...e.argv])
+    // grep, looking for decks: this folder has the one
+    const stdout = e.argv[0] === 'grep' && e.argv.at(-1) === '/work/talks' ? `${PATH}\n` : ''
 
-    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('session.root', () => ({ value: '/work' }))
-  on('session.cwd', () => ({ value: '/work' }))
+  // Claude Code was started in the deck's own folder; the themes are one level above it
+  on('session.root', () => ({ value: '/work/talks' }))
+  on('session.cwd', () => ({ value: '/work/talks' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   on('ui.panes', () => ({ value: [] }))
 
   const opened = await $.command.run({
     command: 'marp',
-    args: 'deck.md',
+    args: '',
     origin: { kind: 'composer' },
     presentation: { isFullscreen: true, columns: 200 },
   })

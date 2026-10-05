@@ -31,11 +31,12 @@ Claude Code の pane に Marp スライドのプレビューを表示します�
    /plugin install marp-preview@marp-preview
    ```
 
-2. スライドのあるプロジェクトで新しいセッションを始め、次を実行します。
+2. スライドのあるプロジェクト、またはデッキのあるフォルダで新しいセッションを始め、次を実行します。
 
    ```
-   /marp                  # いちばん最近更新されたデッキ(`marp: true` のある .md)
+   /marp                  # いまいるフォルダ以下で、いちばん最近更新されたデッキ(`marp: true` のある .md)
    /marp slides/deck.md   # ファイルを指定する場合
+   /marp slides           # フォルダを指定する場合: その中でいちばん最近更新されたデッキ
    ```
 
 ```
@@ -73,7 +74,7 @@ flowchart LR
 
 hooks module は、pane が開いている間、デッキの更新時刻を 1 秒ごとに確認します。変更があると、最後に描いたテキストとスライド単位で比較し、デッキ全体に marp-cli を実行してから、最初に違いがあったスライドまで pane をスクロールします。PNG は端末がファイル名からディスクを直接読むため、画像データはプラグインを通りません。
 
-`marp` は、デッキからプロジェクトルートまでさかのぼって最初に見つかった `node_modules/.bin/marp`(または `marp/node_modules/.bin/marp`)を使い、なければ `npx --yes @marp-team/marp-cli` を使います。その途中にある `theme/`、`themes/`、`marp/themes/` はすべて `--theme-set` として渡します。
+`marp` は、デッキから上へ最大 6 階層さかのぼって最初に見つかった `node_modules/.bin/marp`(または `marp/node_modules/.bin/marp`)を使い、なければ `npx --yes @marp-team/marp-cli` を使います。その途中にある `theme/`、`themes/`、`marp/themes/` はすべて `--theme-set` として渡します。
 
 スライドの数え方は Marp の区切り方と同じです。`---`、`***`、`___` の行が区切りですが、コードフェンスの中、front matter、段落直後の setext 見出しの下線、HTML ブロックの中は区切りません。
 

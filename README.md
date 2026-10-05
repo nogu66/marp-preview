@@ -31,11 +31,12 @@ You need Claude Code 2.1.289 or later, a terminal that speaks the kitty graphics
    /plugin install marp-preview@marp-preview
    ```
 
-2. Start a new session in the project that holds your slides and run:
+2. Start a new session in the project that holds your slides, or in the deck's own folder, and run:
 
    ```
-   /marp                  # the most recently changed deck (a .md with `marp: true`)
+   /marp                  # the most recently changed deck (a .md with `marp: true`) under the folder you are in
    /marp slides/deck.md   # or name one
+   /marp slides           # or a folder: the most recently changed deck in it
    ```
 
 ```
@@ -73,7 +74,7 @@ flowchart LR
 
 The hooks module checks the deck's modification time once a second while the pane is open. On a change it compares the new text with the last one it rendered, slide by slide, runs marp-cli over the deck, and scrolls the pane to the first slide that differs. The terminal reads the PNG from disk by name; no pixel passes through the plugin.
 
-`marp` is taken from the first `node_modules/.bin/marp` (or `marp/node_modules/.bin/marp`) found walking up from the deck to the project root, else `npx --yes @marp-team/marp-cli`. Every `theme/`, `themes/` and `marp/themes/` folder on that walk is passed as a `--theme-set`.
+`marp` is taken from the first `node_modules/.bin/marp` (or `marp/node_modules/.bin/marp`) found walking up from the deck, six folders at most, else `npx --yes @marp-team/marp-cli`. Every `theme/`, `themes/` and `marp/themes/` folder on that walk is passed as a `--theme-set`.
 
 Slides are counted the way Marp splits them: a `---`, `***` or `___` line, but not inside a code fence, not the front matter, not a setext underline right under a paragraph, and not inside an HTML block.
 

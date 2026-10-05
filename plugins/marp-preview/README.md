@@ -17,7 +17,7 @@ The plugin is one hooks module, `hooks/register.tsx`:
 
 ## What it touches
 
-- **Files it reads:** the deck you open, and its modification time once a second while the pane is open. To find a deck when `/marp` has no argument it runs `grep` for `marp: true` over the `.md` files of the project.
+- **Files it reads:** the deck you open, and its modification time once a second while the pane is open. To find a deck when `/marp` has no argument it runs `grep` for `marp: true` over the `.md` files under the folder the session is in, then over the project.
 - **Files it writes:** none in the project. It never changes the deck.
 - **Processes it runs:** `marp` (from the project's `node_modules`, else `npx --yes @marp-team/marp-cli`) with `--images png --allow-local-files`, writing PNGs under `/tmp/marp-preview/`; `mkdir -p` for that folder; and the `grep` above.
 - **Not touched:** the network (beyond what `npx` does to fetch marp-cli), the model, tool calls, the prompt, and settings.
