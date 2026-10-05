@@ -11,6 +11,8 @@ Claude Code の pane に Marp スライドのプレビューを表示します�
 ![Function hooks](docs/badges/function-hooks.svg)
 ![License: MIT](docs/badges/license.svg)
 
+<img src="docs/demo.gif" alt="marp-preview のデモ: /marp を実行すると会話の横に pane が開き、デッキの全スライドが並ぶ。pane を末尾までスクロールして戻したあと、デッキを書き換えると、pane が描き直され、変更されたスライドまでスクロールして、そのページ番号が黄色になる" width="800">
+
 [English](README.md)
 
 </div>
@@ -123,7 +125,7 @@ claude plugin validate plugins/marp-preview  # プラグイン: どのイベン�
 tsc -p plugins/marp-preview                  # 型チェック(または bun run typecheck)
 ```
 
-セッションでプラグインを読み込むと(`claude --plugin-dir plugins/marp-preview`、ヘッドレスなら `claude -p "/cost" --plugin-dir plugins/marp-preview`)、その Claude Code ビルドの型宣言と `tsconfig.json` がプラグインの隣に書き出されます。`tsc` にはこれが必要で、`bun run typecheck` は両方を実行します。インストール済みのコピーはバージョンが変わったときだけ更新されるので、リリースのたびに `plugins/marp-preview/.claude-plugin/plugin.json` の version を上げてください。
+セッションでプラグインを読み込むと(`claude --plugin-dir plugins/marp-preview`、ヘッドレスなら `claude -p "/cost" --plugin-dir plugins/marp-preview`)、その Claude Code ビルドの型宣言と `tsconfig.json` がプラグインの隣に書き出されます。`tsc` にはこれが必要で、`bun run typecheck` は両方を実行します。デモで使っているデッキは [`docs/demo/deck.md`](docs/demo/deck.md) です。インストール済みのコピーはバージョンが変わったときだけ更新されるので、リリースのたびに `plugins/marp-preview/.claude-plugin/plugin.json` の version を上げてください。
 
 ## ライセンス
 

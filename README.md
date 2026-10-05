@@ -11,6 +11,8 @@ A live Marp slide preview in a Claude Code pane. Ask Claude to change a slide an
 ![Function hooks](docs/badges/function-hooks.svg)
 ![License: MIT](docs/badges/license.svg)
 
+<img src="docs/demo.gif" alt="marp-preview demo: /marp opens a pane beside the conversation with every slide of the deck; the pane is scrolled to the end and back; then the deck is edited and the pane renders it again and scrolls to the slide that changed, its page number in yellow" width="800">
+
 [日本語](README.ja.md)
 
 </div>
@@ -123,7 +125,7 @@ claude plugin validate plugins/marp-preview  # the plugin: which events it hooks
 tsc -p plugins/marp-preview                  # type-check (or: bun run typecheck)
 ```
 
-Loading the plugin in a session (`claude --plugin-dir plugins/marp-preview`, or `claude -p "/cost" --plugin-dir plugins/marp-preview` for a headless run) writes the type declarations of your Claude Code build and a `tsconfig.json` next to the plugin; `tsc` needs them, and `bun run typecheck` does both. Bump the version in `plugins/marp-preview/.claude-plugin/plugin.json` with each release, since installed copies update only when it changes.
+Loading the plugin in a session (`claude --plugin-dir plugins/marp-preview`, or `claude -p "/cost" --plugin-dir plugins/marp-preview` for a headless run) writes the type declarations of your Claude Code build and a `tsconfig.json` next to the plugin; `tsc` needs them, and `bun run typecheck` does both. The deck in the demo is [`docs/demo/deck.md`](docs/demo/deck.md). Bump the version in `plugins/marp-preview/.claude-plugin/plugin.json` with each release, since installed copies update only when it changes.
 
 ## License
 

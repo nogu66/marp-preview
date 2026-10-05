@@ -322,7 +322,9 @@ type Target = Parameters<Dollar['ui']['scroll']>[0]['to']
 
 /** Scrolls the pane; does nothing when it cannot move (the pane is closed, say). */
 async function scrollTo($: Dollar, to: Target): Promise<void> {
-  await $.ui.scroll({ in: PANE, to, block: 'start' }).catch(() => undefined)
+  // A slide lands mid-window, so the page number above it shows too; an edge lands on the edge
+  const block = typeof to === 'string' ? 'start' : 'center'
+  await $.ui.scroll({ in: PANE, to, block }).catch(() => undefined)
 }
 
 export const register: Register = on => {
