@@ -4,7 +4,7 @@
 
 # marp-preview
 
-A live Marp slide preview in a Claude Code pane. Ask Claude to change a slide and watch it land, without leaving the terminal.
+A live Marp deck preview in a Claude Code pane. Ask Claude to change a slide and watch it land, without leaving the terminal.
 
 ![Claude Code plugin](docs/badges/claude-code-plugin.svg)
 ![Claude Code 2.1.289+](docs/badges/claude-code-version.svg)
@@ -17,9 +17,15 @@ A live Marp slide preview in a Claude Code pane. Ask Claude to change a slide an
 
 </div>
 
-## Quick start
+## Requirements
 
-You need Claude Code 2.1.289 or later, a terminal that speaks the kitty graphics protocol (Ghostty, kitty), and [marp-cli](https://github.com/marp-team/marp-cli) either in the project (`node_modules/.bin/marp`) or reachable through `npx`.
+| | |
+| --- | --- |
+| Claude Code | 2.1.289 or later, in a terminal |
+| Terminal | One that speaks the kitty graphics protocol: Ghostty, kitty. Not through tmux or ssh |
+| marp-cli | [marp-cli](https://github.com/marp-team/marp-cli) installed in the project or a folder above it (`node_modules/.bin/marp`). Without one, it is run through `npx`, which is slower to start |
+
+## Quick start
 
 1. Install, from your shell or inside a session:
 
@@ -33,34 +39,38 @@ You need Claude Code 2.1.289 or later, a terminal that speaks the kitty graphics
    /plugin install marp-preview@marp-preview
    ```
 
-2. Start a new session in the project that holds your slides, or in the deck's own folder, and run:
+2. Start a new session in the project that holds your slides, or in the deck's own folder, and run `/marp`.
 
-   ```
-   /marp                  # the most recently changed deck (a .md with `marp: true`) under the folder you are in
-   /marp slides/deck.md   # or name one
-   /marp slides           # or a folder: the most recently changed deck in it
-   ```
+The pane opens beside the conversation with every slide of the deck, one under another. The first render takes a few seconds; after that, a save shows in a second or two.
 
-```
-deck.md 12 slides [ ⏭ Last ]
+## Commands
 
-1 / 12
-┌────────────────────────────────┐
-│          the first slide         │
-└────────────────────────────────┘
+| Command | Opens |
+| --- | --- |
+| `/marp` | The most recently changed deck (a `.md` with `marp: true`) under the folder you are in, else anywhere in the project. Once a deck is open, that deck again |
+| `/marp slides/deck.md` | That deck. A relative path is from the folder you are in |
+| `/marp slides` | The most recently changed deck in that folder |
 
-2 / 12
-┌────────────────────────────────┐
-│          the second slide        │
-└────────────────────────────────┘
-  ⋮
-```
+## Using the pane
 
-## Using it
+| To | Do |
+| --- | --- |
+| Move through the deck | Scroll with the mouse wheel, or click the pane and use the arrow and page keys |
+| Jump to the last or the first slide | Click `⏭ Last` at the top, `⏮ First` at the bottom |
+| Give the keys back to the prompt | Esc |
+| Stop the preview | Close the pane |
 
-The pane is the whole deck, one slide under another. Scroll it with the mouse wheel, or click the pane and use the arrow and page keys; Esc gives the keys back to the prompt. `⏭ Last` at the top jumps to the last slide, `⏮ First` at the bottom back to the first.
+**It follows the file.** When Claude or your editor saves the deck, the pane renders it again and scrolls to the first slide that changed, whose page number turns yellow.
 
-**It follows the file.** When Claude or your editor saves the deck, the pane renders it again, in a second or two, and scrolls to the first slide that changed, whose page number turns yellow. The pane only reads the deck: editing is Claude's job, or your editor's.
+**It only reads.** The pane never changes the deck: editing is Claude's job, or your editor's.
+
+## Themes and marp-cli
+
+Both are looked for in the folders above the deck, up to six levels, so it does not matter whether you start Claude Code at the project root or in the deck's folder.
+
+- **marp-cli:** the first `node_modules/.bin/marp` or `marp/node_modules/.bin/marp` found on the way up; else `npx --yes @marp-team/marp-cli`.
+- **Custom themes:** every `theme/`, `themes/` and `marp/themes/` folder on the way up is handed to marp as a `--theme-set`. Put your theme's CSS in one of them and name it in the deck's front matter (`theme: mine`).
+- **Local images** in a slide work: marp is run with `--allow-local-files`.
 
 ## How it works
 
@@ -81,8 +91,6 @@ flowchart LR
 
 **It is stopped with the pane.** Closing the pane, ending the session, opening another deck and reloading the plugin each end marp, and its browser with it. A `/clear` keeps both, as it keeps the pane.
 
-`marp` is taken from the first `node_modules/.bin/marp` (or `marp/node_modules/.bin/marp`) found walking up from the deck, six folders at most, else `npx --yes @marp-team/marp-cli`. Every `theme/`, `themes/` and `marp/themes/` folder on that walk is passed as a `--theme-set`.
-
 Slides are counted the way Marp splits them: a `---`, `***` or `___` line, but not inside a code fence, not the front matter, not a setext underline right under a paragraph, and not inside an HTML block.
 
 | File | Role |
@@ -91,15 +99,21 @@ Slides are counted the way Marp splits them: a `---`, `***` or `___` line, but n
 | [`hooks/lib/deck.ts`](plugins/marp-preview/hooks/lib/deck.ts) | Pure: deck text to slides, and which slide a change touched |
 | [`types/index.d.ts`](plugins/marp-preview/types/index.d.ts) | The plugin's state contract |
 
+What each hook does, and every file and process the plugin touches, is listed in [the plugin's own README](plugins/marp-preview/README.md).
+
 </details>
 
 ## Troubleshooting
 
-**`/marp` is an unknown command.** Claude Code loads a plugin's hooks module only in a workspace you have trusted, and stays silent when it does not. Start Claude Code from a directory you have trusted, or accept the trust prompt for this one.
+**`/marp` is an unknown command.** Claude Code loads a plugin's hooks module only in a workspace you have trusted, and stays silent when it does not. Start Claude Code from a directory you have trusted, or accept the trust prompt for this one. A plugin installed during a session is loaded from the next session on.
 
-**The pane stays on "Rendering the deck…" or shows a red line.** marp-cli failed; the red line is the last line of its error. Run `npx @marp-team/marp-cli your-deck.md --images png` yourself to see all of it. A custom theme must be in a `theme/` or `themes/` folder at or above the deck.
+**The pane stays on "Rendering the deck…" or shows a red line.** marp-cli failed; the red line is the last line of its error. Run `npx @marp-team/marp-cli your-deck.md --images png` yourself to see all of it.
+
+**The slides are rendered, but without your theme.** marp did not find it. The theme's CSS must be in a `theme/`, `themes/` or `marp/themes/` folder at or above the deck.
 
 **No image, only the alt text.** The terminal does not speak the kitty graphics protocol, or sits behind tmux or ssh.
+
+**The pane opens above the prompt, not beside the conversation.** A pane is docked at the side only in Claude Code's fullscreen layout, in a terminal at least 110 columns wide. It works either way.
 
 ## Limitations
 
@@ -107,25 +121,37 @@ Slides are counted the way Marp splits them: a `---`, `***` or `___` line, but n
 <summary>Known limits</summary>
 
 - Function hooks are early access, and their API may change between Claude Code releases. Tested on 2.1.289 with Ghostty on macOS.
+- Terminal only. The desktop app, the VS Code extension and the mobile app cannot draw the slide images; the pane says so there.
 - The first render after `/marp` takes a few seconds, since marp has to start its browser. Later ones take a second or two.
 - While the pane is open, marp and its browser stay running and hold a few hundred megabytes of memory.
+- Every slide is drawn at once, so a very long deck makes a long pane.
 - The image is sized for a terminal cell about 2.1 times as tall as it is wide; another font may show it slightly stretched.
-- Terminal only. The desktop app, the VS Code extension and the mobile app cannot draw the slide images; the pane says so there.
 
 </details>
+
+## Updating
+
+```bash
+claude plugin marketplace update marp-preview
+claude plugin update marp-preview@marp-preview
+```
+
+Then start a new session. What changed in each version is in the [changelog](CHANGELOG.md).
 
 ## Development
 
 ```bash
 claude --plugin-dir plugins/marp-preview     # load this checkout; saving reloads it (or: bun run dev)
-bun test tests                              # the pure logic (or: bun run test)
+bun test tests                               # the pure logic (or: bun run test)
 claude plugin test plugins/marp-preview      # the pane, in the engine's test host (or: bun run test:hooks)
-claude plugin validate .                    # the marketplace
+claude plugin validate .                     # the marketplace
 claude plugin validate plugins/marp-preview  # the plugin: which events it hooks, which `$` calls it makes
 tsc -p plugins/marp-preview                  # type-check (or: bun run typecheck)
 ```
 
-Loading the plugin in a session (`claude --plugin-dir plugins/marp-preview`, or `claude -p "/cost" --plugin-dir plugins/marp-preview` for a headless run) writes the type declarations of your Claude Code build and a `tsconfig.json` next to the plugin; `tsc` needs them, and `bun run typecheck` does both. The deck in the demo is [`docs/demo/deck.md`](docs/demo/deck.md). Bump the version in `plugins/marp-preview/.claude-plugin/plugin.json` with each release, since installed copies update only when it changes.
+Loading the plugin in a session (`claude --plugin-dir plugins/marp-preview`, or `claude -p "/cost" --plugin-dir plugins/marp-preview` for a headless run) writes the type declarations of your Claude Code build and a `tsconfig.json` next to the plugin; `tsc` needs them, and `bun run typecheck` does both.
+
+The deck in the demo is [`docs/demo/deck.md`](docs/demo/deck.md): `/marp docs/demo` opens it. Bump the version in `plugins/marp-preview/.claude-plugin/plugin.json` with each release, since installed copies update only when it changes.
 
 ## License
 
