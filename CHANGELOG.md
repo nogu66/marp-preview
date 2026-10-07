@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed slides drawn at different sizes after the pane was resized: a slide whose picture had not changed kept the size it was first drawn at. A resize now draws every slide again at the pane's size
+- Changed `/marp` with no argument to close the pane when it is in view, stopping marp; with the pane closed it opens the deck as before. `/marp <deck>` and `/marp <folder>` still open
+
 ## 0.2.0
 
 - Changed rendering to one long-running marp: `/marp` starts marp-cli in watch mode and leaves it running, so a save is rendered by the browser that is already open, in about a second and a half where starting a browser each time took four or five. The first render after `/marp` still takes a few seconds
