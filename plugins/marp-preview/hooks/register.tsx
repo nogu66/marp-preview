@@ -280,6 +280,17 @@ async function openDeck($: Dollar, given: string): Promise<string> {
   const current = await read($, deckAtom)
   const asked = given.trim().replace(/^["']|["']$/g, '')
   const named = asked === '' ? undefined : (asked.startsWith('/') ? asked : `${cwd}/${asked}`).replace(/\/+$/, '')
+  // With no deck named, the pane in view is closed: /marp opens it and /marp puts it away
+  if (named === undefined) {
+    const panes = await $.ui.panes().catch(() => [])
+    if (panes.some(pane => pane.id === PANE && pane.isShown && pane.isPlaced)) {
+      isOpen = false
+      stopWatcher()
+      await $.ui.close({ id: PANE })
+
+      return 'Closed Marp Preview.'
+    }
+  }
   // A folder stands for the newest deck in it
   const path =
     named === undefined
@@ -331,7 +342,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'marp',
-      description: 'Open a live preview of a Marp deck in a pane',
+      description: 'Open a live preview of a Marp deck in a pane, or close the open one',
       argumentHint: '[deck.md or folder]',
     })
     // The pane stays open across a reload, the watcher does not: the poll starts another
@@ -386,6 +397,9 @@ export const register: Register = on => {
     const fitRows = Math.round(columns / deck.ratio / CELL_RATIO)
     const imageRows = Math.max(4, Math.min(fitRows, height - 2))
     const imageColumns = Math.max(8, Math.min(columns, Math.round(imageRows * deck.ratio * CELL_RATIO)))
+    // A source equal to the last drawn sends nothing, at whatever size it is now asked for: the size
+    // is part of the generation, so a resized pane draws every slide again and none keeps its old one
+    const generation = (deck.generation * 256 + imageColumns) * 256 + imageRows
     const pages = Array.from({ length: count }, (_, i) => i + 1)
     return (
       <Box flexDirection="column">
@@ -412,7 +426,7 @@ export const register: Register = on => {
                 source={{
                   file: `${deck.outDir}/s.${String(page).padStart(3, '0')}.png`,
                   format: 'png',
-                  generation: deck.generation,
+                  generation,
                 }}
                 columns={imageColumns}
                 rows={imageRows}

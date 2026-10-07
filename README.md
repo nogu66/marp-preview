@@ -47,7 +47,7 @@ The pane opens beside the conversation with every slide of the deck, one under a
 
 | Command | Opens |
 | --- | --- |
-| `/marp` | The most recently changed deck (a `.md` with `marp: true`) under the folder you are in, else anywhere in the project. Once a deck is open, that deck again |
+| `/marp` | The most recently changed deck (a `.md` with `marp: true`) under the folder you are in, else anywhere in the project. With the pane in view, closes it instead |
 | `/marp slides/deck.md` | That deck. A relative path is from the folder you are in |
 | `/marp slides` | The most recently changed deck in that folder |
 
@@ -58,7 +58,7 @@ The pane opens beside the conversation with every slide of the deck, one under a
 | Move through the deck | Scroll with the mouse wheel, or click the pane and use the arrow and page keys |
 | Jump to the last or the first slide | Click `⏭ Last` at the top, `⏮ First` at the bottom |
 | Give the keys back to the prompt | Esc |
-| Stop the preview | Close the pane |
+| Stop the preview | Close the pane, or `/marp` again |
 
 **It follows the file.** When Claude or your editor saves the deck, the pane renders it again and scrolls to the first slide that changed, whose page number turns yellow.
 

@@ -74,7 +74,8 @@ test('/marp keeps one marp watching the deck, restarts it when it dies or hangs,
   on('session.root', () => ({ value: '/work/talks' }))
   on('session.cwd', () => ({ value: '/work/talks' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
-  let isPaneOpen = true
+  let isPaneOpen = false
+  on('ui.close', () => ((isPaneOpen = false), { value: undefined }))
   on('ui.panes', () => ({
     value: isPaneOpen
       ? [{ id: 'marp-preview', title: 'Marp Preview', isShown: true, isFocused: false, isPlaced: true, plugin: 'marp-preview' }]
@@ -96,16 +97,24 @@ test('/marp keeps one marp watching the deck, restarts it when it dies or hangs,
     origin: { kind: 'composer' },
     presentation: { isFullscreen: true, columns: 200 },
   })
+  isPaneOpen = true
   await clock.advance(0)
   expect(JSON.stringify(opened)).toContain('deck.md')
   expect(children.length).toBe(1)
   expect(last()?.argv).toEqual(expect.arrayContaining(['--watch', '--images', 'png', '--theme-set', '/work/themes', PATH]))
 
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const drawn = async () => JSON.stringify(await ui.drawn())
   expect(await ui.find({ type: 'Text', text: 'Rendering the deck…' })).toBeDefined()
   await renders(3)
   for (const name of ['s.001.png', 's.002.png', 's.003.png']) expect(await drawn()).toContain(name)
+
+  // The pane is resized: each slide is asked for as a new source, so none keeps its old size
+  const sourceOf = async () => JSON.stringify((await ui.find({ type: 'Image' }))?.props.source)
+  const wide = await sourceOf()
+  await ui.unmount()
+  ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 60 }, surface: 'terminal' })
+  expect(await sourceOf()).not.toBe(wide)
 
   // The test host has no pane scrolling: only check that a press does not break
   await ui.press({ key: 'end' })
@@ -166,6 +175,19 @@ test('/marp keeps one marp watching the deck, restarts it when it dies or hangs,
   await renders(4)
   expect(alive()).toBe(1)
 
+  // /marp again, with no deck named, closes the pane in view and stops marp; once more opens it
+  const again = { command: 'marp', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } } as const
+  const before = children.length
+  expect(JSON.stringify(await $.command.run(again))).toContain('Closed')
+  await clock.advance(0)
+  expect(isPaneOpen).toBe(false)
+  expect(alive()).toBe(0)
+  expect(JSON.stringify(await $.command.run(again))).toContain('deck.md')
+  isPaneOpen = true
+  await clock.advance(0)
+  expect(children.length).toBe(before + 1)
+  expect(alive()).toBe(1)
+
   // The pane is gone (the engine's own `ui.close` is not one a test can raise): within a poll
   // marp is stopped, and nothing starts it again
   isPaneOpen = false
@@ -173,7 +195,7 @@ test('/marp keeps one marp watching the deck, restarts it when it dies or hangs,
   expect(alive()).toBe(0)
   mtimeMs = 6
   await clock.advance(30_000)
-  expect(children.length).toBe(7)
+  expect(children.length).toBe(8)
   await ui.unmount()
 })
 
